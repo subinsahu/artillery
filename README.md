@@ -52,3 +52,16 @@ sudo apt install libncurses-dev
 | 0–49 | Slow |
 | 50–149 | Medium |
 | 150+ | Fast |
+
+## Code structure
+
+The game is organised into four classes, each responsible for its own state and behaviour:
+
+| Class | Responsibility |
+|-------|---------------|
+| `Helicopter` | Position, movement, explosion animation, collision |
+| `Tank` | Position, left/right movement, barrel location |
+| `Bullet` | Position, upward movement, lifetime |
+| `Game` | Input, update loop, drawing, score/lives, screens |
+
+`main()` only handles ncurses initialisation and constructs a `Game`.
