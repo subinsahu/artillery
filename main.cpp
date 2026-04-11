@@ -41,14 +41,11 @@ struct Helicopter {
         boom       = true;
         boom_timer = 10;
         col        = -LEN;
+        if (speed_interval > 1) --speed_interval;
     }
 
     bool collides_with(int brow, int bcol) const {
         return !boom && brow == HELI_ROW && bcol >= col && bcol < col + LEN;
-    }
-
-    void set_speed(int score) {
-        speed_interval = (score < 50) ? 3 : (score < 150) ? 2 : 1;
     }
 
     void draw(int max_col) const {
@@ -158,7 +155,6 @@ class Game {
             heli.hit();
             bullet.active = false;
             score += 10;
-            heli.set_speed(score);
         }
 
         ++tick;
