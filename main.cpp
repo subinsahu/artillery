@@ -80,8 +80,8 @@ struct Tank {
     Tank() : row(0), col(0), max_col(0) {}
     Tank(int r, int mc) : row(r), col(mc / 2 - LEN / 2), max_col(mc) {}
 
-    void move_left()  { if (col > 1) --col; }
-    void move_right() { if (col < max_col - LEN - 1) ++col; }
+    void move_left()  { col = std::max(1, col - 3); }
+    void move_right() { col = std::min(max_col - LEN - 1, col + 3); }
     int  barrel_col() const { return col + BARREL; }
 
     void draw() const {
