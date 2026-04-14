@@ -55,16 +55,4 @@ The helicopter gains speed with each hit, starting slow and capping at maximum a
 | 1 | 2 | moves every 2 ticks |
 | 2+ | 1 | moves every tick (max) |
 
-## Code structure
 
-Logic and rendering are fully separated:
-
-| Class | Responsibility |
-|-------|---------------|
-| `Helicopter` | Position, movement, explosion state, collision — no ncurses |
-| `Tank` | Position, left/right movement, barrel location — no ncurses |
-| `Bullet` | Position, upward movement, lifetime — no ncurses |
-| `Renderer` | All ncurses drawing: objects, HUD, ground, screens |
-| `Game` | Coordinates input, logic updates, and renderer calls |
-
-`Helicopter`, `Tank`, and `Bullet` have no ncurses dependency and can be unit tested without a terminal. `main()` only handles ncurses initialisation and constructs a `Game`.
