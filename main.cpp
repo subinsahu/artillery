@@ -2,13 +2,13 @@
 #include <chrono>
 #include <thread>
 #include <string>
-#include <vector>
+#include <algorithm>
 
 static const int TICK_MS  = 50;  // 20 fps
 static const int HELI_ROW = 3;
 
 // ---------------------------------------------------------------------------
-// Helicopter
+// Helicopter  —  pure logic, no ncurses
 // ---------------------------------------------------------------------------
 struct Helicopter {
     static constexpr const char* BODY = "[-##-]>";
@@ -47,28 +47,10 @@ struct Helicopter {
     bool collides_with(int brow, int bcol) const {
         return !boom && brow == HELI_ROW && bcol >= col && bcol < col + LEN;
     }
-
-    void draw(int max_col) const {
-        if (boom) {
-            attron(COLOR_PAIR(4) | A_BOLD);
-            mvprintw(HELI_ROW, boom_col, "**BOOM!**");
-            attroff(COLOR_PAIR(4) | A_BOLD);
-            return;
-        }
-        if (col <= -LEN || col >= max_col) return;
-        attron(COLOR_PAIR(2) | A_BOLD);
-        int draw_col  = col;
-        int char_skip = 0;
-        if (draw_col < 0) { char_skip = -draw_col; draw_col = 0; }
-        int n = LEN - char_skip;
-        if (draw_col + n > max_col) n = max_col - draw_col;
-        if (n > 0) mvaddnstr(HELI_ROW, draw_col, BODY + char_skip, n);
-        attroff(COLOR_PAIR(2) | A_BOLD);
-    }
 };
 
 // ---------------------------------------------------------------------------
-// Tank
+// Tank  —  pure logic, no ncurses
 // ---------------------------------------------------------------------------
 struct Tank {
     static constexpr const char* BODY   = "[==^==]";
@@ -83,16 +65,10 @@ struct Tank {
     void move_left()  { col = std::max(1, col - 3); }
     void move_right() { col = std::min(max_col - LEN - 1, col + 3); }
     int  barrel_col() const { return col + BARREL; }
-
-    void draw() const {
-        attron(COLOR_PAIR(1) | A_BOLD);
-        mvprintw(row, col, "%s", BODY);
-        attroff(COLOR_PAIR(1) | A_BOLD);
-    }
 };
 
 // ---------------------------------------------------------------------------
-// Bullet
+// Bullet  —  pure logic, no ncurses
 // ---------------------------------------------------------------------------
 struct Bullet {
     int  row = -1, col = -1;
@@ -111,17 +87,104 @@ struct Bullet {
         if (row < 1) { active = false; return true; }
         return false;
     }
+};
 
-    void draw() const {
-        if (!active) return;
+// ---------------------------------------------------------------------------
+// Renderer  —  all ncurses calls live here
+// ---------------------------------------------------------------------------
+class Renderer {
+    int max_row, max_col;
+
+public:
+    Renderer() : max_row(0), max_col(0) {}
+    Renderer(int rows, int cols) : max_row(rows), max_col(cols) {}
+
+    void draw_helicopter(const Helicopter& h) const {
+        if (h.boom) {
+            attron(COLOR_PAIR(4) | A_BOLD);
+            mvprintw(HELI_ROW, h.boom_col, "**BOOM!**");
+            attroff(COLOR_PAIR(4) | A_BOLD);
+            return;
+        }
+        if (h.col <= -Helicopter::LEN || h.col >= max_col) return;
+        attron(COLOR_PAIR(2) | A_BOLD);
+        int draw_col  = h.col;
+        int char_skip = 0;
+        if (draw_col < 0) { char_skip = -draw_col; draw_col = 0; }
+        int n = Helicopter::LEN - char_skip;
+        if (draw_col + n > max_col) n = max_col - draw_col;
+        if (n > 0) mvaddnstr(HELI_ROW, draw_col, Helicopter::BODY + char_skip, n);
+        attroff(COLOR_PAIR(2) | A_BOLD);
+    }
+
+    void draw_tank(const Tank& t) const {
+        attron(COLOR_PAIR(1) | A_BOLD);
+        mvprintw(t.row, t.col, "%s", Tank::BODY);
+        attroff(COLOR_PAIR(1) | A_BOLD);
+    }
+
+    void draw_bullet(const Bullet& b) const {
+        if (!b.active) return;
         attron(COLOR_PAIR(3) | A_BOLD);
-        mvaddch(row, col, '|');
+        mvaddch(b.row, b.col, '|');
         attroff(COLOR_PAIR(3) | A_BOLD);
+    }
+
+    void draw_hud(int score, int lives) const {
+        attron(COLOR_PAIR(5));
+        mvprintw(0, 1,           "SCORE: %-5d", score);
+        mvprintw(0, max_col/2-5, "ARTILLERY");
+        mvprintw(0, max_col-14,  "LIVES:");
+        for (int i = 0; i < lives; i++) mvaddch(0, max_col - 7 + i, '*');
+        attroff(COLOR_PAIR(5));
+    }
+
+    void draw_ground() const {
+        attron(COLOR_PAIR(1));
+        for (int c = 0; c < max_col; c++) mvaddch(max_row - 2, c, '=');
+        attroff(COLOR_PAIR(1));
+    }
+
+    void draw_frame(const Helicopter& h, const Tank& t,
+                    const Bullet& b, int score, int lives) const {
+        erase();
+        draw_hud(score, lives);
+        draw_ground();
+        draw_helicopter(h);
+        draw_tank(t);
+        draw_bullet(b);
+        refresh();
+    }
+
+    void title_screen() const {
+        clear();
+        attron(COLOR_PAIR(5) | A_BOLD);
+        mvprintw(max_row/2 - 2, max_col/2 - 9,  "*** ARTILLERY ***");
+        mvprintw(max_row/2,     max_col/2 - 15,  "A / D  or  LEFT/RIGHT  - move tank");
+        mvprintw(max_row/2 + 1, max_col/2 - 15,  "SPACE  - fire     Q - quit");
+        mvprintw(max_row/2 + 3, max_col/2 - 11,  "Press any key to start");
+        attroff(COLOR_PAIR(5) | A_BOLD);
+        refresh();
+        nodelay(stdscr, FALSE);
+        getch();
+        nodelay(stdscr, TRUE);
+    }
+
+    void game_over_screen(int score) const {
+        clear();
+        attron(COLOR_PAIR(4) | A_BOLD);
+        mvprintw(max_row/2,     max_col/2 - 8,  "*** GAME OVER ***");
+        mvprintw(max_row/2 + 1, max_col/2 - 8,  "Final score: %-5d", score);
+        mvprintw(max_row/2 + 3, max_col/2 - 10, "Press any key to exit");
+        attroff(COLOR_PAIR(4) | A_BOLD);
+        refresh();
+        nodelay(stdscr, FALSE);
+        getch();
     }
 };
 
 // ---------------------------------------------------------------------------
-// Game
+// Game  —  coordinates logic objects and renderer
 // ---------------------------------------------------------------------------
 class Game {
     int max_row = 0, max_col = 0;
@@ -129,6 +192,7 @@ class Game {
     Helicopter heli;
     Tank       tank;
     Bullet     bullet;
+    Renderer   renderer;
 
     int  score = 0;
     int  lives = 3;
@@ -146,9 +210,7 @@ class Game {
     }
 
     void update() {
-        bool escaped = heli.update(tick, max_col);
-        if (escaped) --lives;
-
+        if (heli.update(tick, max_col)) --lives;
         bullet.update();
 
         if (bullet.active && heli.collides_with(bullet.row, bullet.col)) {
@@ -160,71 +222,23 @@ class Game {
         ++tick;
     }
 
-    void draw() const {
-        erase();
-
-        // HUD
-        attron(COLOR_PAIR(5));
-        mvprintw(0, 1,           "SCORE: %-5d", score);
-        mvprintw(0, max_col/2-5, "ARTILLERY");
-        mvprintw(0, max_col-14,  "LIVES:");
-        for (int i = 0; i < lives; i++) mvaddch(0, max_col - 7 + i, '*');
-        attroff(COLOR_PAIR(5));
-
-        // Ground
-        attron(COLOR_PAIR(1));
-        for (int c = 0; c < max_col; c++) mvaddch(max_row - 2, c, '=');
-        attroff(COLOR_PAIR(1));
-
-        heli.draw(max_col);
-        tank.draw();
-        bullet.draw();
-
-        refresh();
-    }
-
-    void title_screen() const {
-        clear();
-        attron(COLOR_PAIR(5) | A_BOLD);
-        mvprintw(max_row/2 - 2, max_col/2 - 9,  "*** ARTILLERY ***");
-        mvprintw(max_row/2,     max_col/2 - 15, "A / D  or  LEFT/RIGHT  - move tank");
-        mvprintw(max_row/2 + 1, max_col/2 - 15, "SPACE  - fire     Q - quit");
-        mvprintw(max_row/2 + 3, max_col/2 - 11, "Press any key to start");
-        attroff(COLOR_PAIR(5) | A_BOLD);
-        refresh();
-        nodelay(stdscr, FALSE);
-        getch();
-        nodelay(stdscr, TRUE);
-    }
-
-    void game_over_screen() const {
-        clear();
-        attron(COLOR_PAIR(4) | A_BOLD);
-        mvprintw(max_row/2,     max_col/2 - 8,  "*** GAME OVER ***");
-        mvprintw(max_row/2 + 1, max_col/2 - 8,  "Final score: %-5d", score);
-        mvprintw(max_row/2 + 3, max_col/2 - 10, "Press any key to exit");
-        attroff(COLOR_PAIR(4) | A_BOLD);
-        refresh();
-        nodelay(stdscr, FALSE);
-        getch();
-    }
-
 public:
     Game() {
         getmaxyx(stdscr, max_row, max_col);
-        tank = Tank(max_row - 3, max_col);
+        tank     = Tank(max_row - 3, max_col);
+        renderer = Renderer(max_row, max_col);
     }
 
     void run() {
-        title_screen();
+        renderer.title_screen();
         while (lives > 0) {
             handle_input();
             if (lives <= 0) break;
             update();
-            draw();
+            renderer.draw_frame(heli, tank, bullet, score, lives);
             std::this_thread::sleep_for(std::chrono::milliseconds(TICK_MS));
         }
-        game_over_screen();
+        renderer.game_over_screen(score);
     }
 };
 
